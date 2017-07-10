@@ -5,7 +5,6 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   cv_bridge
-  image_geometry
   image_transport
   camera_info_manager
   sensor_msgs
@@ -19,11 +18,13 @@ if (OpenCV_VERSION VERSION_EQUAL "3")
   add_definitions("-DOPENCV3=1")
 endif()
 
+find_package(Boost REQUIRED COMPONENTS thread)
+
 # Dynamic reconfigure support
 generate_dynamic_reconfigure_options(cfg/ProcessFile.cfg)
 
 catkin_package(
-  CATKIN_DEPENDS image_geometry roscpp sensor_msgs message_runtime
+  CATKIN_DEPENDS roscpp sensor_msgs
   DEPENDS OpenCV
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}

@@ -1,3 +1,8 @@
+#include <boost/version.hpp>
+#if ((BOOST_VERSION / 100) % 1000) >= 53
+#include <boost/thread/lock_guard.hpp>
+#endif
+
 #include <ros/ros.h>
 #include <nodelet/nodelet.h>
 #include <image_transport/image_transport.h>
@@ -10,246 +15,202 @@
 
 #include <ros/console.h>
 
+#include <iostream>
+#include <sstream>
 
-namespace raw_video_stream {
+
+namespace raw_video_stream
+{
 
 class ProcessFileNodelet : public nodelet::Nodelet
 {
   // ROS communication
-  boost::shared_ptr<image_transport::ImageTransport> it_in_,it_out_;
-  image_transport::CameraSubscriber cam_sub_;
-  int queue_size_;
-  cv_bridge::CvImageConstPtr source_ptr_;
+  boost::shared_ptr<image_transport::ImageTransport> it_out_;
 
   boost::mutex connect_mutex_;
-  boost::mutex callback_mutex_;
+
   image_transport::CameraPublisher image_pub_;
-  ros::Publisher blobs_pub_;
 
-  // background image
-  ros::Subscriber save_background_sub_;
-  std::string background_image_path_;
-  cv::Mat image_background_;
-  cv::Mat image_foreground_;
+  sensor_msgs::ImagePtr msg_;
+  sensor_msgs::CameraInfo cam_info_msg_;
+  std_msgs::Header header_;
 
-  // threshold
-  double threshold_;
-  ros::Subscriber find_otsu_threshold_sub_;
+  FILE * fp_;
+  int frame_size_;
+  int frame_count_;
+
+  std::string video_stream_provider_;
+  std::string camera_name_;
+  int fps_;
+  std::string frame_id_;
+  std::string camera_info_url_;
+  bool flip_horizontal_;
+  bool flip_vertical_;
+  int width_;
+  int height_;
+  bool flip_image_;
+  int flip_value_;
 
   // dynamic reconfigure
-  boost::recursive_mutex config_mutex_;
-  typedef raw_video_stream::ProcessFileConfig Config;
-  typedef dynamic_reconfigure::Server<Config> ReconfigureServer;
-  boost::shared_ptr<ReconfigureServer> reconfigure_server_;
-  Config config_;
+  // boost::recursive_mutex config_mutex_;
+  // typedef raw_video_stream::ProcessFileConfig Config;
+  // typedef dynamic_reconfigure::Server<Config> ReconfigureServer;
+  // boost::shared_ptr<ReconfigureServer> reconfigure_server_;
+  // Config config_;
 
   virtual void onInit();
 
   void connectCb();
 
-  void imageCb(const sensor_msgs::ImageConstPtr& image_msg,
-               const sensor_msgs::CameraInfoConstPtr& info_msg);
+  void publish();
 
-  void configCb(Config &config,uint32_t level);
-
-  void saveBackgroundImageCb(const std_msgs::EmptyConstPtr& msg);
-
-  void findOtsuThresholdCallback(const std_msgs::EmptyConstPtr& message);
+  // void configCb(Config &config,uint32_t level);
 
 };
 
 void ProcessFileNodelet::onInit()
 {
-  ros::NodeHandle& nh = getNodeHandle();
-  ros::NodeHandle& private_nh = getPrivateNodeHandle();
-  ros::NodeHandle nh_in (nh,"camera");
-  ros::NodeHandle nh_out(nh,"blob_out");
-  it_in_.reset(new image_transport::ImageTransport(nh_in));
-  it_out_.reset(new image_transport::ImageTransport(nh_out));
+  ros::NodeHandle & nh = getNodeHandle();
+  ros::NodeHandle _nh("~"); // to get the private params
+  // ros::NodeHandle & _nh = getPrivateNodeHandle();
+  it_out_.reset(new image_transport::ImageTransport(nh));
+
+  fp_ = NULL;
 
   // read parameters
-  private_nh.param("queue_size",queue_size_,5);
+
+  if (_nh.getParam("video_stream_provider", video_stream_provider_))
+  {
+    ROS_INFO_STREAM("Resource video_stream_provider: " << video_stream_provider_);
+    ROS_INFO_STREAM("Getting video from provider: " << video_stream_provider_);
+    const char * c = video_stream_provider_.c_str();
+    fp_ = fopen(c,"rb");
+  }
+  else
+  {
+    ROS_ERROR("Failed to get param 'video_stream_provider'");
+    return;
+  }
+
+  _nh.param("camera_name", camera_name_, std::string("camera"));
+  ROS_INFO_STREAM("Camera name: " << camera_name_);
+
+  _nh.param("fps", fps_, 240);
+  ROS_INFO_STREAM("Throttling to fps: " << fps_);
+
+  _nh.param("frame_id", frame_id_, std::string("camera"));
+  ROS_INFO_STREAM("Publishing with frame_id: " << frame_id_);
+
+  _nh.param("camera_info_url", camera_info_url_, std::string(""));
+  ROS_INFO_STREAM("Provided camera_info_url: '" << camera_info_url_ << "'");
+
+  _nh.param("flip_horizontal", flip_horizontal_, false);
+  ROS_INFO_STREAM("Flip horizontal image is: " << ((flip_horizontal_)?"true":"false"));
+
+  _nh.param("flip_vertical", flip_vertical_, false);
+  ROS_INFO_STREAM("Flip vertical image is: " << ((flip_vertical_)?"true":"false"));
+
+  _nh.param("width", width_, 0);
+  _nh.param("height", height_, 0);
+  ROS_INFO_STREAM("Image size: " << width_ << "x" << height_);
+  frame_size_ = width_ * height_;
+
+  _nh.param("frame_count", frame_count_, 0);
+  ROS_INFO_STREAM("Frame count: " << frame_count_);
+
+  // From http://docs.opencv.org/modules/core/doc/operations_on_arrays.html#void flip(InputArray src, OutputArray dst, int flipCode)
+  // FLIP_HORIZONTAL == 1, FLIP_VERTICAL == 0 or FLIP_BOTH == -1
+  flip_image_ = true;
+  if (flip_horizontal_ && flip_vertical_)
+    flip_value_ = 0; // flip both, horizontal and vertical
+  else if (flip_horizontal_)
+    flip_value_ = 1;
+  else if (flip_vertical_)
+    flip_value_ = -1;
+  else
+    flip_image_ = false;
 
   // set up dynamic reconfigure
-  reconfigure_server_.reset(new ReconfigureServer(config_mutex_,private_nh));
-  ReconfigureServer::CallbackType f = boost::bind(&ProcessFileNodelet::configCb,this,_1,_2);
-  reconfigure_server_->setCallback(f);
-
-  // background image
-  ros::NodeHandle& private_nh_mt = getMTPrivateNodeHandle();
-  private_nh.param<std::string>("background_image_path",background_image_path_,"background.png");
-
-  // threshold default
-  threshold_ = 20;
+  // reconfigure_server_.reset(new ReconfigureServer(config_mutex_,private_nh));
+  // ReconfigureServer::CallbackType f = boost::bind(&ProcessFileNodelet::configCb,this,_1,_2);
+  // reconfigure_server_->setCallback(f);
 
   // monitor whether anyone is subscribed to the output
   image_transport::SubscriberStatusCallback connect_cb = boost::bind(&ProcessFileNodelet::connectCb,this);
   ros::SubscriberStatusCallback connect_cb_info = boost::bind(&ProcessFileNodelet::connectCb,this);
-  ros::SubscriberStatusCallback connect_cb_blobs = boost::bind(&ProcessFileNodelet::connectCb,this);
   // make sure we don't enter connectCb() between advertising and assigning to image_pub_
   boost::lock_guard<boost::mutex> lock(connect_mutex_);
   image_pub_ = it_out_->advertiseCamera("image_raw",1,connect_cb,connect_cb,connect_cb_info,connect_cb_info);
-  blobs_pub_ = nh.advertise<Blobs>("blobs",1000,connect_cb_blobs,connect_cb_blobs);
-  save_background_sub_ = private_nh.subscribe("save_background_image",2,&ProcessFileNodelet::saveBackgroundImageCb,this);
-  find_otsu_threshold_sub_ = nh.subscribe("find_otsu_threshold",1,&ProcessFileNodelet::findOtsuThresholdCallback,this);
 }
 
 // handles (un)subscribing when clients (un)subscribe
 void ProcessFileNodelet::connectCb()
 {
   boost::lock_guard<boost::mutex> lock(connect_mutex_);
-  if ((image_pub_.getNumSubscribers() == 0) && (blobs_pub_.getNumSubscribers() == 0))
+  if (image_pub_.getNumSubscribers() == 0)
   {
-    cam_sub_.shutdown();
-  }
-  else if (!cam_sub_)
-  {
-    // read background image if one exists
-    image_background_ = cv::imread(background_image_path_,CV_LOAD_IMAGE_GRAYSCALE);
-
-    image_transport::TransportHints hints("raw",ros::TransportHints(),getPrivateNodeHandle());
-    cam_sub_ = it_in_->subscribeCamera("image_raw",queue_size_,&ProcessFileNodelet::imageCb,this,hints);
-  }
-}
-
-void ProcessFileNodelet::imageCb(const sensor_msgs::ImageConstPtr& image_msg,
-                                  const sensor_msgs::CameraInfoConstPtr& info_msg)
-{
-  Config config;
-  {
-    boost::lock_guard<boost::recursive_mutex> lock(config_mutex_);
-    config = config_;
-  }
-  int morph_kernel_size = config.morph_kernel_size;
-  int center_marker_radius = config.center_marker_radius;
-  int drawn_line_thickness = config.drawn_line_thickness;
-  bool draw_crosshairs = config.draw_crosshairs;
-
-  // get a cv::Mat view of the source data
-  {
-    boost::lock_guard<boost::mutex> lock(callback_mutex_);
-    source_ptr_ = cv_bridge::toCvShare(image_msg,sensor_msgs::image_encodings::MONO8);
-  }
-
-  // subtract background image if one exists
-  if (image_background_.data)
-  {
-    boost::lock_guard<boost::mutex> lock(callback_mutex_);
-    cv::absdiff(source_ptr_->image,image_background_,image_foreground_);
   }
   else
   {
-    boost::lock_guard<boost::mutex> lock(callback_mutex_);
-    image_foreground_ = source_ptr_->image;
+    publish();
   }
+}
 
-  // threshold
-  cv::Mat image_threshold;
-  cv::threshold(image_foreground_,image_threshold,threshold_,255,cv::THRESH_BINARY);
+void ProcessFileNodelet::publish()
+{
+  // Config config;
+  // {
+  //   boost::lock_guard<boost::recursive_mutex> lock(config_mutex_);
+  //   config = config_;
+  // }
+  // int morph_kernel_size = config.morph_kernel_size;
+  // int center_marker_radius = config.center_marker_radius;
+  // int drawn_line_thickness = config.drawn_line_thickness;
+  // bool draw_crosshairs = config.draw_crosshairs;
 
-  // morphological opening
-  cv::Mat image_morph;
-  cv::Mat morph_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(morph_kernel_size,morph_kernel_size));
-  cv::morphologyEx(image_threshold,image_morph,cv::MORPH_OPEN,morph_kernel);
+  // header.frame_id = frame_id;
+  // camera_info_manager::CameraInfoManager cam_info_manager(nh, camera_name, camera_info_url);
+  // Get the saved camera info if any
+  // cam_info_msg = cam_info_manager.getCameraInfo();
 
+  ros::NodeHandle & nh = getNodeHandle();
 
-  // find contours
-  std::vector<std::vector<cv::Point> > contours;
-  cv::findContours(image_morph,contours,CV_RETR_EXTERNAL,CV_CHAIN_APPROX_SIMPLE);
+  cv::Mat frame_in;
+  frame_in.create(height_,width_,CV_8UC1);
 
-  // output image
-  cv::Mat image_output;
-  cv::cvtColor(image_morph,image_output,CV_GRAY2BGR);
+  cv::Mat frame_out;
 
-  // draw crosshairs
-  if (draw_crosshairs)
+  //Memory allocation for bayer image data buffer.
+  unsigned char * image_data = (unsigned char *) malloc (sizeof(unsigned char) * frame_size_);
+
+  ros::Rate r(fps_);
+  for (int frame_n=0; frame_n<frame_count_; ++frame_n)
   {
-    int h = image_msg->height;
-    int w = image_msg->width;
-    cv::Scalar yellow(0,255,255);
-    cv::line(image_output,cv::Point(0,h/2),cv::Point(w,h/2),yellow,drawn_line_thickness);
-    cv::line(image_output,cv::Point(w/2,0),cv::Point(w/2,h),yellow,drawn_line_thickness);
-  }
-
-  // draw Contours
-  cv::Scalar blue(255,0,0);
-  drawContours(image_output,contours,-1,blue,-1,8);
-
-  // calculate blob data
-  Blobs blobs;
-  blobs.header = image_msg->header;
-  blobs.image_height = image_msg->height;
-  blobs.image_width = image_msg->width;
-  cv::Scalar red(0,0,255);
-  cv::Scalar green(0,255,0);
-  for(int i=0;i<contours.size();++i)
-  {
-    Blob blob;
-    cv::Moments moments = cv::moments(contours[i]);
-    if (moments.m00 > 0)
+    if (!nh.ok())
     {
-      blob.x = moments.m10/moments.m00;
-      blob.y = moments.m01/moments.m00;
-      blob.area = moments.m00;
-      cv::circle(image_output,cv::Point(blob.x,blob.y),center_marker_radius,red,-1);
-
-      size_t count = contours[i].size();
-      if(count < 6)
-        continue;
-      cv::Mat pointsf;
-      cv::Mat(contours[i]).convertTo(pointsf, CV_32F);
-      cv::RotatedRect box = cv::fitEllipse(pointsf);
-      Ellipse ellipse;
-      ellipse.x = box.center.x;
-      ellipse.y = box.center.y;
-      ellipse.width = box.size.width;
-      ellipse.height = box.size.height;
-      ellipse.angle = box.angle;
-      blob.ellipse = ellipse;
-      cv::ellipse(image_output,box,green,drawn_line_thickness);
-      cv::Point2f vtx[4];
-      box.points(vtx);
-      for(int j=0; j<4; ++j)
-      {
-        cv::line(image_output,vtx[j],vtx[(j+1)%4],cv::Scalar(255,255,0),drawn_line_thickness);
-      }
+      return;
     }
-    blobs.blobs.push_back(blob);
+    //Read image data and store in buffer.
+    fread(image_data,sizeof(unsigned char),frame_size_,fp_);
+
+    memcpy(frame_in.data,image_data,frame_size_);
+
+    cv::cvtColor(frame_in,frame_out,CV_GRAY2BGR);
+
+    msg_ = cv_bridge::CvImage(header_, "bgr8", frame_out).toImageMsg();
+    // cam_info_msg = get_default_camera_info_from_image(msg);
+    image_pub_.publish(*msg_, cam_info_msg_, ros::Time::now());
+
+    ros::spinOnce();
+
+    r.sleep();
   }
-  blobs_pub_.publish(blobs);
-
-  cv_bridge::CvImage output;
-  output.image = image_output;
-  output.header = source_ptr_->header;
-  output.encoding = sensor_msgs::image_encodings::BGR8;
-
-  sensor_msgs::ImagePtr out_image = output.toImageMsg();
-
-  // create updated CameraInfo message
-  sensor_msgs::CameraInfoPtr out_info = boost::make_shared<sensor_msgs::CameraInfo>(*info_msg);
-
-  image_pub_.publish(out_image,out_info);
 }
 
-void ProcessFileNodelet::configCb(Config &config,uint32_t level)
-{
-  config_ = config;
-}
-
-void ProcessFileNodelet::saveBackgroundImageCb(const std_msgs::EmptyConstPtr& msg)
-{
-  boost::lock_guard<boost::mutex> lock(callback_mutex_);
-  cv::imwrite(background_image_path_,source_ptr_->image);
-  source_ptr_->image.copyTo(image_background_);
-}
-
-void ProcessFileNodelet::findOtsuThresholdCallback(const std_msgs::EmptyConstPtr& message)
-{
-  boost::lock_guard<boost::mutex> lock(callback_mutex_);
-  cv::Mat image_threshold;
-  threshold_ = cv::threshold(source_ptr_->image,image_threshold,0,255,cv::THRESH_BINARY+cv::THRESH_OTSU);
-  ROS_INFO("Finding Otsu threshold.");
-}
+// void ProcessFileNodelet::configCb(Config &config,uint32_t level)
+// {
+//   config_ = config;
+// }
 
 } // namespace raw_video_stream
 

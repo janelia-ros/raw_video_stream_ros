@@ -1,12 +1,17 @@
 <launch>
+  <arg name="video_stream_provider" doc="full path to the video file" />
+  <arg name="width" doc="image width in pixels" />
+  <arg name="height" doc="image height in pixels" />
+  <arg name="frame_count" doc="number of images to read in file" />
+  <arg name="fps" doc="frames per second output rate" />
+
   <!-- launch video stream -->
   <include file="$(find raw_video_stream)/launch/camera.launch" >
     <!-- node name and ros graph name -->
     <arg name="camera_name" value="videofile" />
     <!-- full path to the video file -->
-    <arg name="video_stream_provider" value="/home/sampfeiffer/Videos/REEM_grasping.mp4" />
-    <!-- throttling the querying of frames to -->
-    <arg name="fps" value="30" />
+    <arg name="video_stream_provider" value="$(arg video_stream_provider)" />
+    <arg name="fps" value="$(arg fps)" />
     <!-- setting frame_id -->
     <arg name="frame_id" value="videofile_frame" />
     <!-- camera info loading, take care as it needs the "file:///" at the start , e.g.:
@@ -16,6 +21,9 @@
     <arg name="flip_horizontal" value="false" />
     <!-- flip the image vertically -->
     <arg name="flip_vertical" value="false" />
+    <arg name="width" value="$(arg width)" />
+    <arg name="height" value="$(arg height)" />
+    <arg name="frame_count" value="$(arg frame_count)" />
     <!-- visualize on an image_view window the stream generated -->
     <arg name="visualize" value="true" />
   </include>
