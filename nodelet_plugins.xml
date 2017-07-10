@@ -1,0 +1,11 @@
+<library path="lib/libraw_video_stream">
+
+  <class name="raw_video_stream/process_file"
+	 type="raw_video_stream::ProcessFileNodelet"
+	 base_class_type="nodelet::Nodelet">
+    <description>
+      Nodelet to
+    </description>
+  </class>
+
+</library>
