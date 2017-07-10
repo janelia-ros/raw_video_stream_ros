@@ -1,4 +1,5 @@
 <launch>
+  <arg name="manager" />
   <arg name="video_stream_provider" doc="full path to the video file" />
   <arg name="width" doc="image width in pixels" />
   <arg name="height" doc="image height in pixels" />
@@ -7,6 +8,7 @@
 
   <!-- launch video stream -->
   <include file="$(find raw_video_stream)/launch/camera.launch" >
+    <arg name="manager" value="$(arg manager)" />
     <!-- node name and ros graph name -->
     <arg name="camera_name" value="camera" />
     <arg name="video_stream_provider" value="$(arg video_stream_provider)" />
