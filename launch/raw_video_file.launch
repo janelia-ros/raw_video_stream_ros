@@ -8,8 +8,7 @@
   <!-- launch video stream -->
   <include file="$(find raw_video_stream)/launch/camera.launch" >
     <!-- node name and ros graph name -->
-    <arg name="camera_name" value="videofile" />
-    <!-- full path to the video file -->
+    <arg name="camera_name" value="camera" />
     <arg name="video_stream_provider" value="$(arg video_stream_provider)" />
     <arg name="fps" value="$(arg fps)" />
     <!-- setting frame_id -->

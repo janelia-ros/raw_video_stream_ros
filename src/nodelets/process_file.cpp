@@ -96,7 +96,7 @@ void ProcessFileNodelet::onInit()
   ROS_INFO_STREAM("Camera name: " << camera_name_);
 
   _nh.param("fps", fps_, 240);
-  ROS_INFO_STREAM("Throttling to fps: " << fps_);
+  ROS_INFO_STREAM("Outputing at fps: " << fps_);
 
   _nh.param("frame_id", frame_id_, std::string("camera"));
   ROS_INFO_STREAM("Publishing with frame_id: " << frame_id_);
