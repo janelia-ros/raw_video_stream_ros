@@ -71,20 +71,24 @@ class ProcessFileNodelet : public nodelet::Nodelet
 void ProcessFileNodelet::onInit()
 {
   ros::NodeHandle & nh = getNodeHandle();
-  ros::NodeHandle _nh("~"); // to get the private params
-  // ros::NodeHandle & _nh = getPrivateNodeHandle();
+  ros::NodeHandle & pnh = getPrivateNodeHandle();
   it_out_.reset(new image_transport::ImageTransport(nh));
 
   fp_ = NULL;
 
   // read parameters
 
-  if (_nh.getParam("video_stream_provider", video_stream_provider_))
+  if (pnh.getParam("video_stream_provider", video_stream_provider_))
   {
     ROS_INFO_STREAM("Resource video_stream_provider: " << video_stream_provider_);
     ROS_INFO_STREAM("Getting video from provider: " << video_stream_provider_);
     const char * c = video_stream_provider_.c_str();
     fp_ = fopen(c,"rb");
+    if (!fp_)
+    {
+      ROS_ERROR_STREAM("Failed to open 'video_stream_provider': " << video_stream_provider_);
+      return;
+    }
   }
   else
   {
@@ -92,30 +96,30 @@ void ProcessFileNodelet::onInit()
     return;
   }
 
-  _nh.param("camera_name", camera_name_, std::string("camera"));
+  pnh.param("camera_name", camera_name_, std::string("camera"));
   ROS_INFO_STREAM("Camera name: " << camera_name_);
 
-  _nh.param("fps", fps_, 240);
+  pnh.param("fps", fps_, 240);
   ROS_INFO_STREAM("Outputing at fps: " << fps_);
 
-  _nh.param("frame_id", frame_id_, std::string("camera"));
+  pnh.param("frame_id", frame_id_, std::string("camera"));
   ROS_INFO_STREAM("Publishing with frame_id: " << frame_id_);
 
-  _nh.param("camera_info_url", camera_info_url_, std::string(""));
+  pnh.param("camera_info_url", camera_info_url_, std::string(""));
   ROS_INFO_STREAM("Provided camera_info_url: '" << camera_info_url_ << "'");
 
-  _nh.param("flip_horizontal", flip_horizontal_, false);
+  pnh.param("flip_horizontal", flip_horizontal_, false);
   ROS_INFO_STREAM("Flip horizontal image is: " << ((flip_horizontal_)?"true":"false"));
 
-  _nh.param("flip_vertical", flip_vertical_, false);
+  pnh.param("flip_vertical", flip_vertical_, false);
   ROS_INFO_STREAM("Flip vertical image is: " << ((flip_vertical_)?"true":"false"));
 
-  _nh.param("width", width_, 0);
-  _nh.param("height", height_, 0);
+  pnh.param("width", width_, 0);
+  pnh.param("height", height_, 0);
   ROS_INFO_STREAM("Image size: " << width_ << "x" << height_);
   frame_size_ = width_ * height_;
 
-  _nh.param("frame_count", frame_count_, 0);
+  pnh.param("frame_count", frame_count_, 0);
   ROS_INFO_STREAM("Frame count: " << frame_count_);
 
   // From http://docs.opencv.org/modules/core/doc/operations_on_arrays.html#void flip(InputArray src, OutputArray dst, int flipCode)
