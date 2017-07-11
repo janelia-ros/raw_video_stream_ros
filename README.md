@@ -1,4 +1,4 @@
-# raw_video_stream
+# raw_video_stream_ros
 
 Authors:
 
