@@ -1,5 +1,6 @@
 #include <boost/version.hpp>
 #if ((BOOST_VERSION / 100) % 1000) >= 53
+#include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 #endif
 
@@ -7,9 +8,7 @@
 #include <nodelet/nodelet.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/image_encodings.h>
-#include <dynamic_reconfigure/server.h>
 #include <cv_bridge/cv_bridge.h>
-#include <raw_video_stream/ProcessFileConfig.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
@@ -51,20 +50,11 @@ class ProcessFileNodelet : public nodelet::Nodelet
   bool flip_image_;
   int flip_value_;
 
-  // dynamic reconfigure
-  // boost::recursive_mutex config_mutex_;
-  // typedef raw_video_stream::ProcessFileConfig Config;
-  // typedef dynamic_reconfigure::Server<Config> ReconfigureServer;
-  // boost::shared_ptr<ReconfigureServer> reconfigure_server_;
-  // Config config_;
-
   virtual void onInit();
 
   void connectCb();
 
   void publish();
-
-  // void configCb(Config &config,uint32_t level);
 
 };
 
@@ -134,11 +124,6 @@ void ProcessFileNodelet::onInit()
   else
     flip_image_ = false;
 
-  // set up dynamic reconfigure
-  // reconfigure_server_.reset(new ReconfigureServer(config_mutex_,private_nh));
-  // ReconfigureServer::CallbackType f = boost::bind(&ProcessFileNodelet::configCb,this,_1,_2);
-  // reconfigure_server_->setCallback(f);
-
   // monitor whether anyone is subscribed to the output
   image_transport::SubscriberStatusCallback connect_cb = boost::bind(&ProcessFileNodelet::connectCb,this);
   ros::SubscriberStatusCallback connect_cb_info = boost::bind(&ProcessFileNodelet::connectCb,this);
@@ -162,21 +147,6 @@ void ProcessFileNodelet::connectCb()
 
 void ProcessFileNodelet::publish()
 {
-  // Config config;
-  // {
-  //   boost::lock_guard<boost::recursive_mutex> lock(config_mutex_);
-  //   config = config_;
-  // }
-  // int morph_kernel_size = config.morph_kernel_size;
-  // int center_marker_radius = config.center_marker_radius;
-  // int drawn_line_thickness = config.drawn_line_thickness;
-  // bool draw_crosshairs = config.draw_crosshairs;
-
-  // header.frame_id = frame_id;
-  // camera_info_manager::CameraInfoManager cam_info_manager(nh, camera_name, camera_info_url);
-  // Get the saved camera info if any
-  // cam_info_msg = cam_info_manager.getCameraInfo();
-
   ros::NodeHandle & nh = getNodeHandle();
 
   cv::Mat frame_in;
@@ -210,11 +180,6 @@ void ProcessFileNodelet::publish()
     r.sleep();
   }
 }
-
-// void ProcessFileNodelet::configCb(Config &config,uint32_t level)
-// {
-//   config_ = config;
-// }
 
 } // namespace raw_video_stream
 

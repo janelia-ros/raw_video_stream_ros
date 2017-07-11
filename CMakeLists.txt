@@ -8,7 +8,6 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   camera_info_manager
   sensor_msgs
-  dynamic_reconfigure
   nodelet
 )
 
@@ -19,9 +18,6 @@ if (OpenCV_VERSION VERSION_EQUAL "3")
 endif()
 
 find_package(Boost REQUIRED COMPONENTS thread)
-
-# Dynamic reconfigure support
-generate_dynamic_reconfigure_options(cfg/ProcessFile.cfg)
 
 catkin_package(
   CATKIN_DEPENDS roscpp sensor_msgs
@@ -49,12 +45,6 @@ target_link_libraries(raw_video_stream_exe ${PROJECT_NAME}  ${catkin_LIBRARIES} 
 SET_TARGET_PROPERTIES(raw_video_stream_exe PROPERTIES OUTPUT_NAME raw_video_stream)
 install(TARGETS raw_video_stream_exe
         DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(PROGRAMS
-  scripts/test_raw_video_resource.py
-
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 install(DIRECTORY launch
