@@ -9,8 +9,10 @@ find_package(catkin REQUIRED COMPONENTS
   camera_info_manager
   sensor_msgs
   nodelet
+  roslaunch
 )
 
+roslaunch_add_file_check(launch)
 
 find_package(OpenCV REQUIRED)
 if (OpenCV_VERSION VERSION_EQUAL "3")
