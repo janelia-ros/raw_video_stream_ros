@@ -1,19 +1,17 @@
-# raw_video_stream_ros
+#+TITLE: raw_video_stream_ros
+#+AUTHOR: Peter Polidoro
+#+EMAIL: peterpolidoro@gmail.com
 
-Authors:
+* Package Information
+  - Author :: Peter Polidoro
+  - License :: BSD
 
-    Peter Polidoro <polidorop@janelia.hhmi.org>
+* Running
 
-License:
-
-    BSD
-
-##Running
-
-```shell
+  #+BEGIN_SRC sh
 roslaunch raw_video_stream raw_video_file.launch video_stream_provider:=/home/polidorop/zebrafish_tracker/Videos/dark3_uint8_1024x1200_2500frames.raw width:=1024 height:=1200 frame_count:=2500 fps:=50
-```
+  #+END_SRC
 
-```shell
+  #+BEGIN_SRC sh
 rosrun image_view image_view image:=/camera/image_raw
-```
+  #+END_SRC
