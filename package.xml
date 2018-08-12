@@ -8,7 +8,7 @@
     stream from a raw binary file in ROS image topics.
   </description>
 
-  <maintainer email="polidorop@janelia.hhmi.org">Peter Polidoro</maintainer>
+  <maintainer email="peterpolidoro@gmail.com">Peter Polidoro</maintainer>
   <author>Peter Polidoro</author>
 
   <url type="website">https://github.com/janelia-ros/raw_video_stream.git</url>
