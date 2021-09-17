@@ -1,6 +1,6 @@
 #+TITLE: raw_video_stream_ros
 #+AUTHOR: Peter Polidoro
-#+EMAIL: peterpolidoro@gmail.com
+#+EMAIL: peter@polidoro.io
 
 * Package Information
   - Author :: Peter Polidoro
